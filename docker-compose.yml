@@ -1,0 +1,41 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7
+    ports:
+      - '6379:6379'
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: flowstate_db
+      POSTGRES_USER: your_postgres_username
+      POSTGRES_PASSWORD: your_password
+    ports:
+      - '5432:5432'
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+    depends_on:
+      - redis
+      - postgres
+
+  worker:
+    build: .
+    command: celery -A core worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  static_volume:

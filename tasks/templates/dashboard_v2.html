@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowState — Real-time Task Orchestrator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; min-height: 100vh; color: #e2e8f0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 2.5em; margin-bottom: 5px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { color: #94a3b8; font-size: 1em; margin-bottom: 30px; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .metric-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; text-align: center; }
+        .metric-value { font-size: 2em; font-weight: 700; color: #667eea; margin-bottom: 5px; }
+        .metric-label { font-size: 0.85em; color: #94a3b8; }
+        .controls { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; align-items: center; }
+        button { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.3s; }
+        button:hover { background: #5568d3; transform: translateY(-2px); }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        input { padding: 10px 15px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; flex: 1; min-width: 200px; }
+        .filter-btn { padding: 8px 15px; background: transparent; color: #94a3b8; border: 1px solid #334155; border-radius: 20px; cursor: pointer; }
+        .filter-btn.active { background: #667eea; color: white; border-color: #667eea; }
+        .ws-status { padding: 10px 15px; border-radius: 6px; font-size: 0.85em; display: flex; align-items: center; gap: 8px; background: #1e293b; border: 1px solid #334155; }
+        .ws-indicator { width: 10px; height: 10px; border-radius: 50%; }
+        .ws-status.connected { border-color: #10b981; }
+        .ws-status.connected .ws-indicator { background: #10b981; animation: pulse 1.5s infinite; }
+        .ws-status.disconnected .ws-indicator { background: #ef4444; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        select { padding: 10px 15px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; cursor: pointer; }
+        select option { background: #0f172a; color: #e2e8f0; }
+        .section { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 25px; }
+        .section-title { font-size: 1.3em; font-weight: 600; margin-bottom: 15px; }
+        .task-node { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s; }
+        .task-node:hover { border-color: #667eea; background: #1e293b; }
+        .task-node.running { border-color: #3b82f6; background: #1e3a5f; }
+        .task-node.done { border-color: #10b981; background: #1f2b2a; }
+        .task-node.failed { border-color: #ef4444; background: #2b1f1f; }
+        .task-id { font-weight: 600; color: #e2e8f0; }
+        .task-title { color: #94a3b8; font-size: 0.9em; margin-top: 3px; }
+        .task-meta { color: #64748b; font-size: 0.8em; margin-top: 5px; }
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600; }
+        .status-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+        .status-running { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .status-done { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+        .status-failed { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .status-mini { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+        .status-mini.pending { background: #f59e0b; }
+        .status-mini.running { background: #3b82f6; }
+        .status-mini.done { background: #10b981; }
+        .status-mini.failed { background: #ef4444; }
+        .task-button { padding: 6px 12px; font-size: 0.8em; background: #667eea; color: white; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #94a3b8; }
+        .log-container { background: #0f172a; border: 1px solid #334155; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 0.85em; max-height: 200px; overflow-y: auto; }
+        .log-line { margin: 3px 0; padding: 3px 0; border-bottom: 1px solid #1e293b; }
+        .log-error { color: #f87171; }
+        .log-success { color: #86efac; }
+        .log-info { color: #60a5fa; }
+        .log-warning { color: #fbbf24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 FlowState</h1>
+        <p class="subtitle">Real-time Collaborative Task Orchestrator with DAG Execution & Advanced Scheduling</p>
+
+        <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center; flex-wrap: wrap;">
+            <div class="ws-status disconnected" id="wsStatus">
+                <span class="ws-indicator"></span>
+                <span id="wsText">Connecting...</span>
+            </div>
+            <select id="workspaceSelect" onchange="switchWorkspace()">
+                <option value="">📊 Global Metrics</option>
+            </select>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value" id="totalTasks">—</div>
+                <div class="metric-label">Total Tasks</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="successCount">—</div>
+                <div class="metric-label">Successful Executions</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="failureCount">—</div>
+                <div class="metric-label">Failed Executions</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="totalDuration">—</div>
+                <div class="metric-label">Total Duration</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div style="display: flex; gap: 8px;">
+                <button class="filter-btn active" onclick="filterTasks('all')">All</button>
+                <button class="filter-btn" onclick="filterTasks('pending')">⏳ Pending</button>
+                <button class="filter-btn" onclick="filterTasks('running')">▶️ Running</button>
+                <button class="filter-btn" onclick="filterTasks('done')">✓ Done</button>
+                <button class="filter-btn" onclick="filterTasks('failed')">✗ Failed</button>
+            </div>
+            <input type="text" id="searchInput" placeholder="Search tasks..." onkeyup="filterTasks('search')">
+            <button id="executeBtn" onclick="executeDag()">▶️ Execute DAG</button>
+            <button onclick="fetchMetrics(); fetchTasks();">🔄 Refresh</button>
+        </div>
+
+        <div class="section">
+            <div class="section-title" id="sectionTitle">📊 All Tasks</div>
+            <div id="taskList"></div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">📋 Execution Log</div>
+            <div class="log-container">
+                <div id="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        const INITIAL_METRICS = {{ initial_metrics_json|safe }};
+        const INITIAL_TASKS = {{ initial_tasks_json|safe }};
+        const INITIAL_WORKSPACES = {{ initial_workspaces_json|safe }};
+        let tasks = {};
+        let currentFilter = 'all';
+        let currentWorkspace = '';
+        let workspaces = [];
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            line.textContent = `[${timestamp}] ${message}`;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function loadWorkspaces() {
+            try {
+                const response = await fetch('/api/tenants/');
+                const data = await response.json();
+                workspaces = data.results || [];
+                const select = document.getElementById('workspaceSelect');
+                workspaces.forEach(ws => {
+                    const option = document.createElement('option');
+                    option.value = ws.key;
+                    option.textContent = `${ws.name} (${ws.key})`;
+                    select.appendChild(option);
+                });
+                log(`✓ Loaded ${workspaces.length} workspaces`, 'success');
+            } catch (error) {
+                log(`Error loading workspaces: ${error.message}`, 'error');
+            }
+        }
+
+        async function switchWorkspace() {
+            currentWorkspace = document.getElementById('workspaceSelect').value;
+            const title = document.getElementById('sectionTitle');
+            
+            if (currentWorkspace) {
+                const ws = workspaces.find(w => w.key === currentWorkspace);
+                title.textContent = `📊 Task DAG (${ws.name})`;
+                // Close old websocket and connect to new workspace
+                if (ws) connectWebSocket(currentWorkspace);
+            } else {
+                title.textContent = '📊 All Tasks';
+                if (ws) ws.close();
+            }
+            
+            fetchMetrics();
+            fetchTasks();
+        }
+
+        function connectWebSocket(workspaceKey = null) {
+            if (!workspaceKey) return;
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/workspace/${workspaceKey}/`;
+            
+            if (ws) ws.close();
+            
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => {
+                log(`✓ Connected to workspace: ${workspaceKey}`, 'success');
+                updateWsStatus(true);
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.id && data.status) {
+                    updateTaskStatus(data.id, data.status);
+                    log(`Task ${data.id} → ${data.status.toUpperCase()}`, 'success');
+                    fetchMetrics();
+                }
+            };
+            ws.onerror = () => {
+                log('✗ WebSocket error', 'error');
+                updateWsStatus(false);
+            };
+            ws.onclose = () => {
+                log('⚠ WebSocket disconnected', 'warning');
+                updateWsStatus(false);
+            };
+        }
+
+        function updateWsStatus(connected) {
+            const status = document.getElementById('wsStatus');
+            const text = document.getElementById('wsText');
+            if (connected) {
+                status.className = 'ws-status connected';
+                text.textContent = '✓ Connected';
+            } else {
+                status.className = 'ws-status disconnected';
+                text.textContent = '✗ Disconnected';
+            }
+        }
+
+        function formatDuration(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '—';
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) return `${hours}h ${mins}m`;
+            if (mins > 0) return `${mins}m ${secs}s`;
+            return `${secs}s`;
+        }
+
+        async function fetchMetrics() {
+            try {
+                let url = '/api/tasks/metrics/';
+                // metrics endpoint requires a workspace key. Use selected workspace or the first available workspace.
+                const workspaceKey = currentWorkspace || (workspaces && workspaces.length ? workspaces[0].key : null);
+                if (!workspaceKey) return; // nothing to fetch
+                url += `?workspace=${workspaceKey}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data || data.error) return; // keep initial metrics if API returns error
+
+                document.getElementById('totalTasks').textContent = data.total_tasks || 0;
+                document.getElementById('successCount').textContent = (data.execution_results?.success || 0);
+                document.getElementById('failureCount').textContent = (data.execution_results?.failure || 0);
+
+                const duration = data.total_duration_seconds || 0;
+                document.getElementById('totalDuration').textContent = formatDuration(duration);
+            } catch (error) {
+                log(`Error fetching metrics: ${error.message}`, 'error');
+            }
+        }
+
+        async function fetchTasks() {
+            try {
+                let url = '/api/tasks/';
+                if (currentWorkspace) {
+                    url += `?workspace=${currentWorkspace}`;
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                tasks = {};
+                data.results.forEach(task => {
+                    tasks[task.id] = task;
+                });
+                renderTasks();
+            } catch (error) {
+                log(`Error fetching tasks: ${error.message}`, 'error');
+            }
+        }
+
+        function renderTasks() {
+            const container = document.getElementById('taskList');
+            container.innerHTML = '';
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            let filtered = Object.values(tasks)
+                .sort((a, b) => a.id - b.id)
+                .filter(task => {
+                    if (currentFilter !== 'all' && task.status !== currentFilter) return false;
+                    if (search && !task.title.toLowerCase().includes(search)) return false;
+                    return true;
+                });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state">🎯 No tasks found</div>';
+                return;
+            }
+
+            filtered.forEach(task => {
+                const node = document.createElement('div');
+                node.className = `task-node ${task.status}`;
+                const deps = task.dependencies.length > 0 ? `Deps: ${task.dependencies.join(', ')}` : 'No deps';
+                const duration = task.duration ? ` (${task.duration.toFixed(2)}s)` : '';
+                node.innerHTML = `
+                    <div>
+                        <div class="task-id">Task ${task.id} — ${task.title}</div>
+                        <div class="task-meta">${deps} ${duration}</div>
+                    </div>
+                    <div>
+                        <span class="status-badge status-${task.status}"><span class="status-mini ${task.status}"></span>${task.status.toUpperCase()}</span>
+                        ${task.status === 'pending' ? `<button class="task-button" onclick="executeSingleTask(${task.id})">Run</button>` : ''}
+                    </div>
+                `;
+                container.appendChild(node);
+            });
+        }
+
+        function updateTaskStatus(taskId, status) {
+            if (tasks[taskId]) {
+                tasks[taskId].status = status;
+                renderTasks();
+            }
+        }
+
+        async function executeDag() {
+            document.getElementById('executeBtn').disabled = true;
+            try {
+                const body = currentWorkspace ? 
+                    { workspace_key: currentWorkspace } : 
+                    { workspace_key: workspaces[0]?.key };
+                
+                const response = await fetch('/api/tasks/execute_dag/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                log(`✓ Enqueued ${data.task_ids?.length || 0} tasks in DAG order`, 'success');
+                fetchMetrics();
+                fetchTasks();
+            } catch (error) {
+                log(`Error executing DAG: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('executeBtn').disabled = false;
+            }
+        }
+
+        async function executeSingleTask(taskId) {
+            try {
+                await fetch(`/api/tasks/${taskId}/execute/`, { method: 'POST' });
+                log(`✓ Task ${taskId} enqueued`, 'success');
+            } catch (error) {
+                log(`Error executing task: ${error.message}`, 'error');
+            }
+        }
+
+        function filterTasks(filter) {
+            if (filter !== 'search') {
+                currentFilter = filter;
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+            }
+            renderTasks();
+        }
+
+        window.addEventListener('load', () => {
+            log('🎬 FlowState Dashboard initialized', 'info');
+            // apply server-provided initial data to avoid empty state
+            try {
+                if (Array.isArray(INITIAL_WORKSPACES) && INITIAL_WORKSPACES.length > 0) {
+                    workspaces = INITIAL_WORKSPACES;
+                    const select = document.getElementById('workspaceSelect');
+                    select.innerHTML = '<option value="">📊 Global Metrics</option>';
+                    workspaces.forEach(ws => {
+                        const option = document.createElement('option');
+                        option.value = ws.key;
+                        option.textContent = `${ws.name} (${ws.key})`;
+                        select.appendChild(option);
+                    });
+                    log(`✓ Loaded ${workspaces.length} workspaces`, 'success');
+                }
+
+                if (Array.isArray(INITIAL_TASKS)) {
+                    tasks = {};
+                    INITIAL_TASKS.forEach(t => { tasks[t.id] = t; });
+                    renderTasks();
+                }
+
+                if (INITIAL_METRICS) {
+                    document.getElementById('totalTasks').textContent = INITIAL_METRICS.total_tasks || 0;
+                    document.getElementById('successCount').textContent = (INITIAL_METRICS.execution_results?.success || 0);
+                    document.getElementById('failureCount').textContent = (INITIAL_METRICS.execution_results?.failure || 0);
+                    document.getElementById('totalDuration').textContent = formatDuration(INITIAL_METRICS.total_duration_seconds || 0);
+                }
+            } catch (e) {
+                console.warn('Error applying initial data', e);
+            }
+
+            // fetch live updates periodically only if we have at least one workspace
+            if (workspaces && workspaces.length) {
+                fetchMetrics();
+                fetchTasks();
+                setInterval(() => { fetchMetrics(); fetchTasks(); }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>
