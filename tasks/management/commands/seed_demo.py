@@ -38,9 +38,12 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Cycle detected: {e}"))
             return
 
-        # Enqueue execution
-        for task in ordered:
-            execute_task.delay(task.id)
-            self.stdout.write(f"Enqueued task {task.id}: {task.title}")
-
-        self.stdout.write(self.style.SUCCESS('Demo setup complete. Check Celery worker logs for execution.'))
+        # Enqueue execution (skip if Redis/Celery not available)
+        try:
+            for task in ordered:
+                execute_task.delay(task.id)
+                self.stdout.write(f"Enqueued task {task.id}: {task.title}")
+            self.stdout.write(self.style.SUCCESS('Demo setup complete. Check Celery worker logs for execution.'))
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f'Celery/Redis not available: {str(e)}'))
+            self.stdout.write(self.style.SUCCESS('Demo setup complete (without Celery execution). Tasks created in database.'))
