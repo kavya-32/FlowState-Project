@@ -23,7 +23,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY SETTINGS (use environment variables in production)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-3f@824@kl+0^5@g)w@9_a1@chg*rarvru=@!jvnlo$3yk9mba^')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
+
+# ALLOWED_HOSTS with sensible defaults for development and Render
+allowed_hosts_env = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+else:
+    # Default for development and Render deployments
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.onrender.com', '*.onrender.com']
 
 
 # Application definition
