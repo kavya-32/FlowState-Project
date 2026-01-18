@@ -15,7 +15,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY . /app/
 
 # Collect static, run migrations are handled by entrypoint
-COPY FlowState/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
