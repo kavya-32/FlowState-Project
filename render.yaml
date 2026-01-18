@@ -1,0 +1,60 @@
+# Render manifest for FlowState — FREE TIER
+# Uses SQLite database and free Render services
+
+services:
+  - type: web
+    name: flowstate-web
+    env: docker
+    repo: "https://github.com/YOUR_USERNAME/YOUR_REPO.git"
+    branch: main
+    dockerfilePath: Dockerfile
+    plan: free
+    startCommand: >-
+      bash -lc "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "YOUR_RENDER_URL,localhost"
+      - key: DATABASE_URL
+        value: "sqlite:///db.sqlite3"
+
+  - type: worker
+    name: flowstate-worker
+    env: docker
+    repo: "https://github.com/YOUR_USERNAME/YOUR_REPO.git"
+    branch: main
+    dockerfilePath: Dockerfile
+    plan: free
+    startCommand: >-
+      celery -A core worker --loglevel=info
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        value: "sqlite:///db.sqlite3"
+
+# DEPLOYMENT INSTRUCTIONS:
+# 1. Replace YOUR_USERNAME and YOUR_REPO with your GitHub details
+# 2. Push this file to your GitHub repo
+# 3. Go to https://render.com → Sign up (free)
+# 4. Click "New +" → "Web Service"
+# 5. Connect your GitHub repo
+# 6. Render will auto-detect render.yaml
+# 7. In Environment tab, set DJANGO_SECRET_KEY to a secure random value
+# 8. Deploy!
+#
+# FREE TIER INCLUDES:
+# - Web Service (750 free hours/month)
+# - Worker Service (750 free hours/month)
+# - SQLite database (local file storage)
+# - SSL certificate (automatic)
+#
+# NOTES:
+# - Web service spins down after 15 min inactivity (add-on removes this)
+# - SQLite is single-connection; works great for demo/small teams
+# - For production: upgrade to PostgreSQL database ($7+/month)
