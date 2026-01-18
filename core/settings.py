@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY SETTINGS (use environment variables in production)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-3f@824@kl+0^5@g)w@9_a1@chg*rarvru=@!jvnlo$3yk9mba^')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
 
 
 # Application definition
@@ -172,6 +172,13 @@ CELERY_RESULT_SERIALIZER = 'json'
 
 # Django Celery Results
 CELERY_RESULT_BACKEND = 'django-db'
+
+# REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 1000,
+    'DEFAULT_FILTER_BACKENDS': ['rest_framework.filters.SearchFilter', 'rest_framework.filters.OrderingFilter'],
+}
 
 # Simple shard map (logical tenant -> DB alias)
 SHARD_MAP = {
